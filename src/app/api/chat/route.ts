@@ -8,6 +8,11 @@ import {
 } from "~/server/ai/deepseek";
 import { DEFAULT_SYSTEM_PROMPT } from "~/server/ai/prompts";
 import { getSession } from "~/server/better-auth/server";
+import {
+	appendMessage,
+	createConversation,
+	getConversation,
+} from "~/server/chat/conversations";
 
 /**
  * Better Auth and the Postgres driver both need Node APIs, so this handler can
@@ -147,6 +152,36 @@ export async function POST(req: Request): Promise<Response> {
 		);
 	}
 
+	// zod's `min(1)` plus the "last message is user" refinement guarantee this
+	// is present, but `noUncheckedIndexedAccess` still types `.at(-1)` as
+	// possibly `undefined`.
+	const lastUserMessage = parsed.data.messages.at(-1);
+	if (!lastUserMessage) {
+		return invalidRequest("Send at least one message.");
+	}
+
+	// Resolved — and, for an unknown or foreign id, rejected — before anything
+	// reaches DeepSeek: an authenticated request must never spend provider
+	// tokens on a conversation it cannot touch.
+	const conversation = parsed.data.conversationId
+		? await getConversation(session.user.id, parsed.data.conversationId)
+		: await createConversation(
+				session.user.id,
+				lastUserMessage.content.slice(0, 60),
+			);
+	if (!conversation) {
+		return Response.json({ error: "Conversation not found" }, { status: 404 });
+	}
+
+	await appendMessage(
+		session.user.id,
+		conversation.id,
+		"user",
+		lastUserMessage.content,
+	);
+
+	const system = conversation.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
+
 	// One signal for both ways this request can be cut short: the client going
 	// away, and the provider never answering. `timedOut` tells them apart in
 	// the catch below — the SDK reports either as an `APIUserAbortError`.
@@ -166,7 +201,7 @@ export async function POST(req: Request): Promise<Response> {
 		{
 			model: DEEPSEEK_MODEL,
 			max_tokens: DEFAULT_MAX_TOKENS,
-			system: DEFAULT_SYSTEM_PROMPT,
+			system,
 			messages: parsed.data.messages,
 		},
 		{ signal: upstream.signal },
@@ -231,6 +266,11 @@ export async function POST(req: Request): Promise<Response> {
 	// otherwise be logged as a stream error rather than the disconnect it is.
 	let clientGone = false;
 
+	// Accumulated as chunks are enqueued so a client cancellation still has
+	// something to persist; overwritten with the authoritative concatenation
+	// from `finalMessage()` once the stream ends normally.
+	let assistantText = firstText ?? "";
+
 	const body = new ReadableStream<Uint8Array>({
 		async start(controller) {
 			try {
@@ -245,12 +285,21 @@ export async function POST(req: Request): Promise<Response> {
 						}
 						const text = textOf(next.value);
 						if (text) {
+							assistantText += text;
 							controller.enqueue(encoder.encode(text));
 						}
 					}
 					if (!clientGone) {
-						await stream.finalMessage();
+						assistantText = textOfMessage(await stream.finalMessage());
 					}
+				}
+				if (!clientGone) {
+					await appendMessage(
+						session.user.id,
+						conversation.id,
+						"assistant",
+						assistantText,
+					);
 				}
 				controller.close();
 			} catch (error) {
@@ -266,11 +315,23 @@ export async function POST(req: Request): Promise<Response> {
 		},
 		cancel() {
 			// The client hung up — stop the upstream request instead of leaving
-			// it running at the provider.
+			// it running at the provider. `cancel()` cannot be awaited by the
+			// platform, so persisting the partial reply is fire-and-forget: a
+			// best-effort courtesy to the next page load, not part of the
+			// response.
 			clientGone = true;
 			stream.abort();
+			void appendMessage(
+				session.user.id,
+				conversation.id,
+				"assistant",
+				assistantText,
+			);
 		},
 	});
 
-	return new Response(body, { status: 200, headers: STREAM_HEADERS });
+	return new Response(body, {
+		status: 200,
+		headers: { ...STREAM_HEADERS, "X-Conversation-Id": conversation.id },
+	});
 }

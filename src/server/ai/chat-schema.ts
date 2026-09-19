@@ -28,8 +28,10 @@ export const chatRequestSchema = z.object({
 			{ message: "The last message must come from the user." },
 		),
 	/**
-	 * Accepted but ignored while conversations are not persisted yet. Declared
-	 * now so the contract does not have to change once they are.
+	 * When omitted, `POST /api/chat` creates a new conversation behind the
+	 * scenes and reports its id back via the `X-Conversation-Id` header. When
+	 * present, it must belong to the caller — otherwise the route responds 404
+	 * before any DeepSeek call.
 	 */
 	conversationId: z.string().uuid().optional(),
 });

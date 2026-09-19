@@ -8,5 +8,11 @@ export default {
 	dbCredentials: {
 		url: env.DATABASE_URL,
 	},
-	tablesFilter: ["desarrollo-de-software-con-ia_*"],
+	// `pgTableCreator` prefixes app tables with `pg-drizzle_`, not
+	// `desarrollo-de-software-con-ia_`; Better Auth's tables (`user`, `session`,
+	// `account`, `verification`) are plain `pgTable` with no prefix at all.
+	// Both patterns must stay listed: on a Postgres instance shared across
+	// worktrees, an empty or mismatched filter would let `db:push` propose
+	// dropping tables this project doesn't own.
+	tablesFilter: ["pg-drizzle_*", "user", "session", "account", "verification"],
 } satisfies Config;
