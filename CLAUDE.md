@@ -31,7 +31,7 @@ Set `SKIP_ENV_VALIDATION=1` to bypass env checks during `build`/`dev` (e.g. Dock
 
 ## Environment
 
-`src/env.js` is the single source of truth for env vars (`@t3-oss/env-nextjs` + zod). Add any new variable there **and** in `.env.example`. Import via `import { env } from "~/env"`, never `process.env` directly. `BETTER_AUTH_SECRET` is optional in dev, required in production.
+`src/env.js` is the single source of truth for env vars (`@t3-oss/env-nextjs` + zod). Add any new variable there **and** in `.env.example`. Import via `import { env } from "~/env"`, never `process.env` directly. `BETTER_AUTH_SECRET` is optional in dev, required in production. `DEEPSEEK_API_KEY` is required; `DEEPSEEK_BASE_URL` defaults to `https://api.deepseek.com/anthropic` and `DEEPSEEK_MODEL` to `deepseek-flash`. Because `drizzle.config.ts` imports `~/env`, the `db:*` scripts also require `DEEPSEEK_API_KEY` (or `SKIP_ENV_VALIDATION=1`).
 
 ## Architecture
 
@@ -39,6 +39,7 @@ Set `SKIP_ENV_VALIDATION=1` to bypass env checks during `build`/`dev` (e.g. Dock
 - **Auth (`src/server/better-auth/`)**: `config.ts` builds the `betterAuth` instance with the Drizzle `pg` adapter and email/password enabled. `nextCookies()` must remain the **last** plugin so server actions can set session cookies. `server.ts` exports a React-`cache`d `getSession()` for server components. `client.ts` is the browser client (`better-auth/react`). The catch-all route `src/app/api/auth/[...all]/route.ts` exposes Better Auth's handler.
 - **Auth flow in pages**: `src/app/page.tsx` uses inline `"use server"` actions calling `auth.api.signInEmail` / `signUpEmail` / `signOut` with `headers()` passed through, then `redirect()` with `?error=` on failure. Follow this pattern rather than client-side auth calls for server-rendered forms.
 - **DB (`src/server/db/`)**: `index.ts` caches the `postgres` connection on `globalThis` outside production to survive HMR. `schema.ts` holds both app tables and the Better Auth tables (`user`, `session`, `account`, `verification`) whose column names Better Auth expects; changing them requires updating the adapter config.
+- **AI (`src/server/ai/`)**: `deepseek.ts` builds the `@anthropic-ai/sdk` client against DeepSeek's Anthropic-compatible endpoint — `apiKey` and `baseURL` are passed explicitly so the SDK never falls back to `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL`; it also exports `DEEPSEEK_MODEL` and `DEFAULT_MAX_TOKENS` (4096). `prompts.ts` holds `DEFAULT_SYSTEM_PROMPT` as a plain string. Only `model`, `max_tokens`, `system`, `messages` and `temperature` may be sent: DeepSeek answers 400 to `top_k`, `thinking`, `output_config`, `cache_control`, `betas`, `fallbacks` and `mcp_servers`. Use the SDK's own types (`Anthropic.MessageParam`) instead of redeclaring them, and keep these modules server-only (Node runtime, never edge).
 
 ## Known gotcha: table prefix mismatch
 

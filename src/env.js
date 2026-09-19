@@ -12,6 +12,12 @@ export const env = createEnv({
 				? z.string()
 				: z.string().optional(),
 		DATABASE_URL: z.string().url(),
+		DEEPSEEK_API_KEY: z.string().min(1),
+		DEEPSEEK_BASE_URL: z
+			.string()
+			.url()
+			.default("https://api.deepseek.com/anthropic"),
+		DEEPSEEK_MODEL: z.string().min(1).default("deepseek-flash"),
 		NODE_ENV: z
 			.enum(["development", "test", "production"])
 			.default("development"),
@@ -33,6 +39,9 @@ export const env = createEnv({
 	runtimeEnv: {
 		BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
 		DATABASE_URL: process.env.DATABASE_URL,
+		DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+		DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL,
+		DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL,
 		NODE_ENV: process.env.NODE_ENV,
 	},
 	/**
