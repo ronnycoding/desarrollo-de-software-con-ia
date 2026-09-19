@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { buttonClass, inputClass } from "~/app/_components/styles";
 import { auth } from "~/server/better-auth";
 import { getSession } from "~/server/better-auth/server";
 
@@ -58,11 +59,6 @@ async function signOut() {
 	redirect("/");
 }
 
-const inputClass =
-	"rounded-md bg-white/10 px-4 py-2 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-[hsl(280,100%,70%)]";
-const buttonClass =
-	"rounded-full bg-white/10 px-10 py-3 font-semibold no-underline transition hover:bg-white/20";
-
 export default async function Home({
 	searchParams,
 }: {
@@ -111,11 +107,16 @@ export default async function Home({
 							<p className="text-center text-2xl text-white">
 								Logged in as {session.user.name}
 							</p>
-							<form action={signOut}>
-								<button className={buttonClass} type="submit">
-									Sign out
-								</button>
-							</form>
+							<div className="flex gap-4">
+								<Link className={buttonClass} href="/chat">
+									Chat
+								</Link>
+								<form action={signOut}>
+									<button className={buttonClass} type="submit">
+										Sign out
+									</button>
+								</form>
+							</div>
 						</div>
 					) : (
 						<div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
