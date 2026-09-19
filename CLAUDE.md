@@ -18,7 +18,7 @@ bun run check               # biome lint + format check
 bun run check:write         # biome auto-fix (safe)
 bun run check:unsafe        # biome auto-fix incl. unsafe fixes
 
-# Database (Postgres on localhost:5434)
+# Database (Postgres on localhost:5464)
 docker compose up -d        # preferred: postgres:17-alpine, creds from .env / defaults
 ./start-database.sh         # alternative: parses DATABASE_URL, runs a plain docker container
 bun run db:push             # push schema directly (dev)
@@ -42,9 +42,9 @@ Set `SKIP_ENV_VALIDATION=1` to bypass env checks during `build`/`dev` (e.g. Dock
 - **AI (`src/server/ai/`)**: `deepseek.ts` builds the `@anthropic-ai/sdk` client against DeepSeek's Anthropic-compatible endpoint — `apiKey` and `baseURL` are passed explicitly so the SDK never falls back to `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL`; it also exports `DEEPSEEK_MODEL` and `DEFAULT_MAX_TOKENS` (4096). `prompts.ts` holds `DEFAULT_SYSTEM_PROMPT` as a plain string. Only `model`, `max_tokens`, `system`, `messages` and `temperature` may be sent: DeepSeek answers 400 to `top_k`, `thinking`, `output_config`, `cache_control`, `betas`, `fallbacks` and `mcp_servers`. Use the SDK's own types (`Anthropic.MessageParam`) instead of redeclaring them, and keep these modules server-only (Node runtime, never edge).
 - **Chat endpoint (`src/app/api/chat/route.ts`)**: `POST /api/chat`, `runtime = "nodejs"`. Order matters: `getSession()` runs first (it reads `headers()`, unusable once the response has started, and an anonymous request must never spend provider tokens) → `chatRequestSchema.safeParse` → open the stream with `{ signal: req.signal }`. The handler then drains events up to the first text delta **before** returning a `Response`, because once the 200 is on the wire the status can no longer change — that window is the only place an `Anthropic.APIError` can still become a 502. Check `Anthropic.APIUserAbortError` before `Anthropic.APIError`: it extends it, and a client hanging up is not an upstream fault. Statuses: 200 streamed `text/plain` (`Cache-Control: no-cache, no-transform` + `X-Accel-Buffering: no`, both required or proxies buffer the whole body), 400 `{ error, issues }` (also for a body over `MAX_BODY_BYTES` or unparseable JSON), 401, 502 — plus a 499 with no body when the client hangs up before the first token, which nothing is left to read. The provider gets `FIRST_TOKEN_TIMEOUT_MS` to produce a first token (the SDK's own timeout stops at response headers and would let a silent provider hang the handler forever); exceeding it is a 502. A mid-stream failure can only `controller.error()`; `cancel()` calls `stream.abort()` so the upstream request dies with the client. The contract is frozen — later slices extend it additively (`X-Conversation-Id`, 404, 429) without changing existing fields.
 
-## Known gotcha: table prefix mismatch
+## Resolved gotcha: table prefix mismatch
 
-`drizzle.config.ts` sets `tablesFilter: ["desarrollo-de-software-con-ia_*"]`, but `schema.ts` creates app tables with `pgTableCreator` prefix `pg-drizzle_` and the Better Auth tables with plain `pgTable` (no prefix). None of the current tables match the filter, so `db:push` / `db:generate` may ignore them. Align either the filter or the prefix before relying on drizzle-kit.
+`drizzle.config.ts` previously set `tablesFilter: ["desarrollo-de-software-con-ia_*"]`, which matched none of the actual tables: `schema.ts` creates app tables with `pgTableCreator` prefix `pg-drizzle_` and the Better Auth tables with plain `pgTable` (no prefix). `tablesFilter` is now `["pg-drizzle_*", "user", "session", "account", "verification"]`, covering both patterns. Keep it in sync with `schema.ts` — on a Postgres instance shared across worktrees, an empty or stale filter would let `db:push` propose dropping tables this project doesn't own.
 
 ## Code style
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 
 import { buttonClass, inputClass } from "~/app/_components/styles";
@@ -11,11 +12,6 @@ type ChatPanelMessage = ChatMessage & { id: string };
 
 type ChatStatus = "idle" | "streaming" | "error";
 
-/**
- * `conversationId` and `initialMessages` are unused this slice — they are
- * declared now so #8 can pass a persisted conversation into `ChatPanel`
- * without changing its public signature.
- */
 type ChatPanelProps = {
 	conversationId?: string;
 	initialMessages?: ChatMessage[];
@@ -27,7 +23,8 @@ function toChatMessage({ role, content }: ChatPanelMessage): ChatMessage {
 	return { role, content };
 }
 
-export function ChatPanel({ initialMessages }: ChatPanelProps) {
+export function ChatPanel({ conversationId, initialMessages }: ChatPanelProps) {
+	const router = useRouter();
 	const [messages, setMessages] = useState<ChatPanelMessage[]>(
 		() =>
 			initialMessages?.map((message) => ({
@@ -37,6 +34,13 @@ export function ChatPanel({ initialMessages }: ChatPanelProps) {
 	);
 	const [input, setInput] = useState("");
 	const [status, setStatus] = useState<ChatStatus>("idle");
+
+	// Mutable, not state: it must be readable synchronously inside
+	// `sendMessage` without waiting for a render, and it only ever moves from
+	// `undefined` to a real id once — set from the prop when resuming a
+	// conversation, or from the first response's `X-Conversation-Id` when
+	// starting one.
+	const conversationIdRef = useRef(conversationId);
 
 	const abortControllerRef = useRef<AbortController | null>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -86,7 +90,10 @@ export function ChatPanel({ initialMessages }: ChatPanelProps) {
 			const res = await fetch("/api/chat", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ messages: history.map(toChatMessage) }),
+				body: JSON.stringify({
+					messages: history.map(toChatMessage),
+					conversationId: conversationIdRef.current,
+				}),
 				signal: controller.signal,
 			});
 
@@ -100,6 +107,14 @@ export function ChatPanel({ initialMessages }: ChatPanelProps) {
 				setInput(trimmed);
 				setStatus("error");
 				return;
+			}
+
+			// The URL only moves once: after the first reply, `conversationIdRef`
+			// is set and every later response reports back the same id.
+			const newConversationId = res.headers.get("X-Conversation-Id");
+			if (newConversationId && !conversationIdRef.current) {
+				conversationIdRef.current = newConversationId;
+				router.replace(`/chat/${newConversationId}`);
 			}
 
 			const decoder = new TextDecoder();
