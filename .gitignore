@@ -46,3 +46,4 @@ yarn-error.log*
 .idea
 # git worktrees used by /work-on-opens
 .worktrees/
+.claude/worktrees/
