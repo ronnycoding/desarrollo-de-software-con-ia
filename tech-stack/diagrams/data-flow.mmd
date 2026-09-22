@@ -1,0 +1,72 @@
+%% Chatbot DeepSeek - Data flow de una petición de chat con streaming
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant CP as ChatPanel (navegador)
+    participant RH as POST /api/chat (Node)
+    participant AU as Better Auth getSession
+    participant RL as checkRateLimit
+    participant DB as Postgres (Drizzle)
+    participant DS as DeepSeek /anthropic
+
+    U->>CP: escribe y pulsa Send
+    CP->>CP: añade mensaje user + placeholder assistant
+    CP->>RH: POST {messages, conversationId?} + cookie
+
+    RH->>AU: getSession()
+    alt sin sesión
+        AU-->>RH: null
+        RH-->>CP: 401 {"error":"Unauthorized"}
+    else con sesión
+        AU-->>RH: session.user.id
+        RH->>RL: checkRateLimit(userId)
+        alt límite excedido
+            RL-->>RH: {allowed:false, retryAfterSeconds}
+            RH-->>CP: 429 + Retry-After
+        else permitido
+            RH->>RH: chatRequestSchema.safeParse(body)
+            alt body inválido
+                RH-->>CP: 400 {"error":"Invalid request", issues}
+            else body válido
+                alt llega conversationId
+                    RH->>DB: getConversation(userId, id)
+                    alt ajena o inexistente
+                        DB-->>RH: null
+                        RH-->>CP: 404 {"error":"Conversation not found"}
+                    else propia
+                        DB-->>RH: conversation
+                    end
+                else sin conversationId
+                    RH->>DB: createConversation(userId, title)
+                    DB-->>RH: conversation
+                end
+
+                RH->>DB: appendMessage(userId, id, "user", content)
+                RH->>DS: messages.stream({model, max_tokens, system, messages})
+
+                alt APIError antes del primer byte
+                    DS-->>RH: Anthropic.APIError
+                    RH-->>CP: 502 {"error":"Upstream error"}
+                else stream abierto
+                    RH-->>CP: 200 text/plain + X-Conversation-Id
+                    loop por cada text_delta
+                        DS-->>RH: content_block_delta
+                        RH-->>CP: chunk de texto
+                        CP->>CP: append al mensaje del asistente
+                        CP-->>U: texto apareciendo progresivamente
+                    end
+                    opt el usuario pulsa Stop
+                        CP->>RH: AbortController.abort()
+                        RH->>DS: stream.abort()
+                        RH->>DB: appendMessage(assistant, texto parcial)
+                    end
+                    DS-->>RH: finalMessage() + usage.output_tokens
+                    RH->>DB: appendMessage(userId, id, "assistant", texto)
+                    RH-->>CP: controller.close()
+                    opt la página no tenía id
+                        CP->>CP: router.replace("/chat/" + X-Conversation-Id)
+                    end
+                end
+            end
+        end
+    end
