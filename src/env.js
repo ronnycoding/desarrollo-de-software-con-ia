@@ -18,6 +18,7 @@ export const env = createEnv({
 			.url()
 			.default("https://api.deepseek.com/anthropic"),
 		DEEPSEEK_MODEL: z.string().min(1).default("deepseek-flash"),
+		CHAT_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(20),
 		NODE_ENV: z
 			.enum(["development", "test", "production"])
 			.default("development"),
@@ -42,6 +43,7 @@ export const env = createEnv({
 		DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
 		DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL,
 		DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL,
+		CHAT_RATE_LIMIT_PER_MINUTE: process.env.CHAT_RATE_LIMIT_PER_MINUTE,
 		NODE_ENV: process.env.NODE_ENV,
 	},
 	/**

@@ -117,6 +117,24 @@ export async function renameConversation(
 }
 
 /**
+ * `null` when `id` does not exist or belongs to another user. `null` for
+ * `systemPrompt` itself clears the override so the conversation falls back to
+ * `DEFAULT_SYSTEM_PROMPT`.
+ */
+export async function updateSystemPrompt(
+	userId: string,
+	id: string,
+	systemPrompt: string | null,
+): Promise<Conversation | null> {
+	const [row] = await db
+		.update(conversation)
+		.set({ systemPrompt, updatedAt: new Date() })
+		.where(and(eq(conversation.id, id), eq(conversation.userId, userId)))
+		.returning();
+	return row ?? null;
+}
+
+/**
  * `false` when `id` does not exist or belongs to another user. Messages are
  * removed by the `onDelete: "cascade"` foreign key, not a second query.
  */

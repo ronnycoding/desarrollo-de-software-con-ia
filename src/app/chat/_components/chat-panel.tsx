@@ -23,6 +23,14 @@ function toChatMessage({ role, content }: ChatPanelMessage): ChatMessage {
 	return { role, content };
 }
 
+/** Distinct copy for a 429 so the wait is explicit instead of a generic retry. */
+function rateLimitMessage(retryAfter: string | null): string {
+	const seconds = Number(retryAfter);
+	return Number.isFinite(seconds) && seconds > 0
+		? `You're sending messages too fast. Try again in ${seconds}s.`
+		: "You're sending messages too fast. Try again shortly.";
+}
+
 export function ChatPanel({ conversationId, initialMessages }: ChatPanelProps) {
 	const router = useRouter();
 	const [messages, setMessages] = useState<ChatPanelMessage[]>(
@@ -34,6 +42,7 @@ export function ChatPanel({ conversationId, initialMessages }: ChatPanelProps) {
 	);
 	const [input, setInput] = useState("");
 	const [status, setStatus] = useState<ChatStatus>("idle");
+	const [errorMessage, setErrorMessage] = useState(ERROR_MESSAGE);
 
 	// Mutable, not state: it must be readable synchronously inside
 	// `sendMessage` without waiting for a render, and it only ever moves from
@@ -104,6 +113,11 @@ export function ChatPanel({ conversationId, initialMessages }: ChatPanelProps) {
 				setMessages((prev) =>
 					prev.filter((message) => message.id !== assistantMessage.id),
 				);
+				setErrorMessage(
+					res.status === 429
+						? rateLimitMessage(res.headers.get("Retry-After"))
+						: ERROR_MESSAGE,
+				);
 				setInput(trimmed);
 				setStatus("error");
 				return;
@@ -147,9 +161,11 @@ export function ChatPanel({ conversationId, initialMessages }: ChatPanelProps) {
 				setMessages((prev) =>
 					prev.filter((message) => message.id !== assistantMessage.id),
 				);
+				setErrorMessage(ERROR_MESSAGE);
 				setInput(trimmed);
 				setStatus("error");
 			} else {
+				setErrorMessage(ERROR_MESSAGE);
 				setStatus("error");
 			}
 		} finally {
@@ -187,8 +203,11 @@ export function ChatPanel({ conversationId, initialMessages }: ChatPanelProps) {
 			</div>
 
 			{status === "error" && (
-				<p className="rounded-md bg-red-500/20 px-4 py-2 text-red-200">
-					{ERROR_MESSAGE}
+				<p
+					aria-live="polite"
+					className="rounded-md bg-red-500/20 px-4 py-2 text-red-200"
+				>
+					{errorMessage}
 				</p>
 			)}
 
