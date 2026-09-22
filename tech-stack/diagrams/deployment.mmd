@@ -1,0 +1,28 @@
+%% Chatbot DeepSeek - Topología local del workshop (no hay staging ni producción)
+graph TB
+    subgraph dev["Máquina del desarrollador"]
+        subgraph app["Proceso Bun"]
+            NEXT["next dev --turbo<br/>Next.js 15 · Node runtime<br/>http://localhost:3000"]
+            MEM["Rate limit en memoria<br/>Map en globalThis"]
+            NEXT --- MEM
+        end
+
+        subgraph docker["Docker Compose"]
+            PG[("postgres:17-alpine<br/>container: desarrollo-de-software-con-ia-postgres<br/>puerto host: POSTGRES_PORT · default 5434<br/>healthcheck: pg_isready")]
+            VOL[["volumen postgres_data"]]
+            PG --- VOL
+        end
+
+        ENV["src/env.js (zod)<br/>DATABASE_URL · BETTER_AUTH_SECRET<br/>DEEPSEEK_API_KEY · DEEPSEEK_BASE_URL<br/>DEEPSEEK_MODEL · CHAT_RATE_LIMIT_PER_MINUTE"]
+        WT["git worktrees .worktrees/*<br/>demo Epic-Driven<br/>requieren .env + bun install propios"]
+    end
+
+    DS["DeepSeek API<br/>https://api.deepseek.com/anthropic"]
+
+    ENV -.->|"valida al arrancar"| NEXT
+    NEXT -->|"postgres.js · pool cacheado en globalThis"| PG
+    NEXT -->|"HTTPS · Anthropic SDK"| DS
+    WT -.->|"comparten el mismo Postgres"| PG
+
+    classDef ext fill:#eee,stroke:#999,stroke-dasharray: 4 3
+    class DS ext

@@ -13,7 +13,7 @@ import { listConversations } from "~/server/chat/conversations";
  * `children` renders its own `<main>`, so this only contributes the flex row
  * and the sidebar — wrapping it in a second `<main>` would nest landmarks.
  *
- * Both mutations in `~/server/chat/actions` end with
+ * The rename and delete actions in `~/server/chat/actions` end with
  * `revalidatePath("/chat", "layout")`, which is what re-runs
  * `listConversations` here after a rename or delete.
  */

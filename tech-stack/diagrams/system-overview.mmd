@@ -1,0 +1,46 @@
+%% Chatbot DeepSeek - System Overview
+%% Render: https://mermaid.live/ · GitHub renderiza .mmd nativamente
+graph TB
+    subgraph client["Navegador"]
+        UI["Páginas server-rendered<br/>/ · /chat · /chat/:conversationId"]
+        CP["ChatPanel (use client)<br/>fetch + getReader + TextDecoder"]
+        CS["ChatSettings / ConversationItem<br/>(use client) · useActionState"]
+    end
+
+    subgraph next["Next.js 15 · Node runtime"]
+        RH["Route Handler<br/>POST /api/chat"]
+        AH["Route Handler<br/>/api/auth/*"]
+        SA["Server Actions<br/>rename · delete · systemPrompt"]
+        RL["rate-limit.ts<br/>Map en globalThis · 60s"]
+        SESS["better-auth/server.ts<br/>getSession() React.cache"]
+        REPO["chat/conversations.ts<br/>repositorio user-scoped"]
+        AI["ai/deepseek.ts<br/>Anthropic SDK · baseURL DeepSeek"]
+        SCHEMA["ai/chat-schema.ts<br/>zod · ChatMessage"]
+    end
+
+    subgraph data["Datos"]
+        PG[("PostgreSQL 17<br/>user · session · account · verification<br/>pg-drizzle_conversation · pg-drizzle_message")]
+    end
+
+    subgraph ext["Servicios externos"]
+        DS["DeepSeek<br/>api.deepseek.com/anthropic<br/>modelo deepseek-flash"]
+    end
+
+    UI --> CP
+    UI --> CS
+    CP -->|"POST JSON → text/plain stream"| RH
+    CS -->|"FormData"| SA
+    UI -->|"sign in / up / out"| AH
+
+    RH --> SESS
+    RH --> RL
+    RH --> SCHEMA
+    RH --> REPO
+    RH --> AI
+    SA --> SESS
+    SA --> REPO
+    AH --> PG
+    SESS --> PG
+    REPO --> PG
+    AI -->|"messages.stream · HTTPS"| DS
+    CP -.->|"importa el tipo ChatMessage"| SCHEMA

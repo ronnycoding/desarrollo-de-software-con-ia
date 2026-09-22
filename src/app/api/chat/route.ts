@@ -7,6 +7,7 @@ import {
 	deepseek,
 } from "~/server/ai/deepseek";
 import { DEFAULT_SYSTEM_PROMPT } from "~/server/ai/prompts";
+import { checkRateLimit } from "~/server/ai/rate-limit";
 import { getSession } from "~/server/better-auth/server";
 import {
 	appendMessage,
@@ -128,6 +129,21 @@ export async function POST(req: Request): Promise<Response> {
 	const session = await getSession();
 	if (!session) {
 		return Response.json({ error: "Unauthorized" }, { status: 401 });
+	}
+
+	// Before the body is even read: a client already over quota must not pay
+	// for parsing or validation, let alone reach DeepSeek. Keyed by
+	// `session.user.id`, not `conversationId`, so switching conversations
+	// cannot evade it.
+	const rateLimit = checkRateLimit(session.user.id);
+	if (!rateLimit.allowed) {
+		return Response.json(
+			{ error: "Rate limited" },
+			{
+				status: 429,
+				headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+			},
+		);
 	}
 
 	const raw = await readBoundedBody(req, MAX_BODY_BYTES);
